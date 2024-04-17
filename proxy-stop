@@ -1,0 +1,9 @@
+#!/bin/ksh
+
+PROXY_PATH=./TcpProxy/tcproxy
+PROXY_NAME=`basename $PROXY_PATH`
+killall $PROXY_NAME
+
+echo Done
+
+

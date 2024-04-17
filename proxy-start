@@ -1,0 +1,34 @@
+#!/bin/ksh
+
+PROXY_PATH=./tcproxy
+PROXY_CONF=./tcproxy.conf
+PROXY_LOG_DIR=.
+
+#
+# Get the proxy executable name 
+#
+PROXY_NAME=`basename $PROXY_PATH`
+
+# Compose logfile name based on program name without extension
+LOG_FILE=$PROXY_LOG_DIR/${PROXY_NAME%.*}.log
+
+# The proxy listens on fifo file for incoming commands.
+# Compose FIFO name based on program name without extension
+COMMAND_FIFO=/tmp/${PROXY_NAME%.*}.fifo
+#echo $COMMAND_FIFO
+
+#
+# Terminate all running proxy processes (if any)
+#
+killall $PROXY_NAME
+
+#
+# Start proxy process
+#
+echo Starting $PROXY_PATH
+echo Logfile: $LOG_FILE
+
+nohup $PROXY_PATH $PROXY_CONF >> $LOG_FILE 2>&1 &
+
+
+
