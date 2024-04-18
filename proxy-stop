@@ -1,6 +1,6 @@
 #!/bin/ksh
 
-PROXY_PATH=./TcpProxy/tcproxy
+PROXY_PATH=./tcproxy
 PROXY_NAME=`basename $PROXY_PATH`
 killall $PROXY_NAME
 

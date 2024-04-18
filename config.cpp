@@ -127,31 +127,33 @@ char* Config::TrimLine(char* line)
     if(line == nullptr)
         return nullptr;
 
-	// Trim left side
-	char* ptr = line;
-	while(isspace(*ptr))
-		ptr++;
+    // Trim left side
+    char* ptr = line;
+    while(isspace(*ptr))
+        ptr++;
 
     line = ptr;
 
-	// Trim right side
-	char* ptrLast = nullptr;
-	while(*ptr != '\0')
-	{
-		//if(*ptr == ' ')
-		if(isspace(*ptr))
-		{
-			if(ptrLast == nullptr)
-				ptrLast = ptr;
-		}
-		else
-			ptrLast = nullptr;
-		ptr++;
-	}
+    // Trim right side
+    char* ptrLast = nullptr;
+    while(*ptr != '\0')
+    {
+        //if(*ptr == ' ')
+        if(isspace(*ptr))
+        {
+            if(ptrLast == nullptr)
+                ptrLast = ptr;
+        }
+        else
+        {
+            ptrLast = nullptr;
+        }
+        ptr++;
+    }
 
     // Truncate at trailing spaces
-	if(ptrLast != nullptr)
-		*ptrLast = '\0'; 
+    if(ptrLast != nullptr)
+        *ptrLast = '\0'; 
 
     // Remove new-line character at the end - if any
     if(*(ptr - 1) == '\n')
