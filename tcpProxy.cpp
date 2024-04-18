@@ -265,38 +265,92 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
             break;
         }
         
-        struct hostent* h = nullptr;
-        
         //
         // Get the source host addr
         //
-        h = gethostbyname(source_host);
-        if(h == nullptr)
+        addrinfo hints;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_UNSPEC;        // Allow IPv4 or IPv6
+        hints.ai_socktype = SOCK_STREAM;    // TCP (connection-based protocol)
+        hints.ai_flags = 0;
+        hints.ai_protocol = 0;              // Any protocol
+
+        // Note: getaddrinfo() returns a list of address structures
+        addrinfo* addr = nullptr;
+        int status = getaddrinfo(source_host, nullptr, &hints, &addr);
+        if(status != 0)
         {
-            printf("%s: gethostbyname(%s) error: %s\n", __func__, source_host, hstrerror(h_errno));
+            printf("%s: getaddrinfo(%s) error: %s\n", __func__, source_host, gai_strerror(status));
             result = false;
             break;
         }
-        
-        struct sockaddr_in source_addr;
-        memset(&source_addr, 0, sizeof(struct sockaddr_in));
-        memcpy(&source_addr.sin_addr.s_addr, h->h_addr_list[0], sizeof(in_addr_t));
-        
+
+        // Get first AF_INET addr.
+        struct in_addr source_addr{};
+//        struct in6_addr source6_addr{};
+
+        addrinfo* next = addr;
+        for(; next != nullptr; next = next->ai_next)
+        {
+            if(next->ai_family == AF_INET)
+            {
+                source_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
+                break;
+            }
+            else if(addr->ai_family == AF_INET6)
+            {
+//                printf("AF_INET6 ...TODO\n");
+//                source6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
+            }
+        }
+        freeaddrinfo(addr);
+
+        if(!next)
+        {
+            printf("%s: No IPv4 addresses available for '%s'\n", __func__, source_host);
+            result = false;
+            break;
+        }
+
         //
         // Get the target host addr
         //
-        h = gethostbyname(target_host);
-        if(h == nullptr)
+        addr = nullptr;
+        status = getaddrinfo(target_host, nullptr, &hints, &addr);
+        if(status != 0)
         {
-            printf("%s: gethostbyname(%s) error: %s\n", __func__, target_host, hstrerror(h_errno));
+            printf("%s: getaddrinfo(%s) error: %s\n", __func__, target_host, gai_strerror(status));
             result = false;
             break;
         }
-        
-        struct sockaddr_in target_addr;
-        memset(&target_addr, 0, sizeof(struct sockaddr_in));
-        memcpy(&target_addr.sin_addr.s_addr, h->h_addr_list[0], sizeof(in_addr_t));
-        
+
+        // Get first AF_INET addr.
+        struct in_addr target_addr{};
+//        struct in6_addr target6_addr{}; // TODO
+
+        next = addr;
+        for(; next != nullptr; next = next->ai_next)
+        {
+            if(next->ai_family == AF_INET)
+            {
+                target_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
+                break;
+            }
+            else if(addr->ai_family == AF_INET6)
+            {
+//                printf("AF_INET6 ...TODO\n");
+//                target6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
+            }
+        }
+        freeaddrinfo(addr);
+
+        if(!next)
+        {
+            printf("%s: No IPv4 addresses available for '%s'\n", __func__, target_host);
+            result = false;
+            break;
+        }
+
         //
         // Set new route
         //
@@ -308,8 +362,8 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
             break;
         }
         
-        strncpy(new_route->source_ip, inet_ntoa(source_addr.sin_addr), MAX_ADDR_NAME);
-        strncpy(new_route->target_ip, inet_ntoa(target_addr.sin_addr), MAX_ADDR_NAME);
+        strncpy(new_route->source_ip, inet_ntoa(source_addr), MAX_ADDR_NAME);
+        strncpy(new_route->target_ip, inet_ntoa(target_addr), MAX_ADDR_NAME);
         new_route->target_port = target_port;
     
         if(route == nullptr)
