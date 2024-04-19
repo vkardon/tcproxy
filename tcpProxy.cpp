@@ -46,10 +46,11 @@ CTcpProxy::CTcpProxy(const char* program_name, const char* configFile)
     // Get the base name
     char buf[PATH_MAX]{};
     strcpy(buf, program_name);
-    char* base_name = basename(buf);
-    char* tmp = strchr(base_name, '.');
+    char* name = basename(buf);
+    char* tmp = strchr(name, '.');
     if(tmp != nullptr)
         *tmp = '\0';
+    strcpy(base_name, name);
     
     // Make sure that no other instances of TcpProxy are running
     if(IsProcessRunning(base_name))
@@ -129,11 +130,11 @@ void CTcpProxy::CallbackSelect()
     // Note: select will change fd_set passed, so we need to make a copy
     fd_set trfds = rfds;
     fd_set twfds = wfds;
-    
+
     int n = select(FD_MAX+1, &trfds, &twfds, nullptr, nullptr);
     if(n < 0)
     {
-		printf("select error: %s\n", strerror(errno));
+        printf("select error: %s\n", strerror(errno));
         return;
     }
     
@@ -142,7 +143,7 @@ void CTcpProxy::CallbackSelect()
     //for(int i = 0; n && i <= FD_MAX; i++)
     for(int i = 3; n && i <= FD_MAX; i++)
     {
-		//printf("%s: entering FD_ISSEST...\n", __func__);
+        //printf("%s: entering FD_ISSEST...\n", __func__);
         
         // Note: any callbacks might in turn update rfds/wfds by calling
         // CallbackRemove on a higher numbered file descriptor.
@@ -153,14 +154,20 @@ void CTcpProxy::CallbackSelect()
         {
             n--;
             if(FD_ISSET(i, &rfds)) // Is callback still wanted?
+            {
+                //printf("%s: Calling read_fn for fd=%d\n", __func__, i);
                 (this->*cb[i].read_fn)(i);
+            }
         }
         
         if(FD_ISSET(i, &twfds))
         {
             n--;
             if(FD_ISSET(i, &wfds)) // Is callback still wanted?
+            {
+                //printf("%s: Calling write_fn for fd=%d\n", __func__, i);
                 (this->*cb[i].write_fn)(i);
+            }
         }
     }
 }
@@ -255,7 +262,7 @@ bool CTcpProxy::MakeAsync(int fd)
 bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsigned short target_port)
 {
     bool result = false;
-    
+
     while(true)
     {
         if(source_host == nullptr || target_host == nullptr || target_port == 0)
@@ -264,7 +271,19 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
             result = false;
             break;
         }
-        
+   
+        //
+        // Create new route
+        //
+        Route* new_route = new (std::nothrow) Route;
+        if(new_route == nullptr)
+        {
+            printf("%s: Out of memory: new_route is NULL\n", __func__);
+            result = false;
+            break;
+        }
+        new_route->target_port = target_port;
+
         //
         // Get the source host addr
         //
@@ -281,26 +300,28 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
         if(status != 0)
         {
             printf("%s: getaddrinfo(%s) error: %s\n", __func__, source_host, gai_strerror(status));
+            delete new_route;
             result = false;
             break;
         }
 
-        // Get first AF_INET addr.
-        struct in_addr source_addr{};
-//        struct in6_addr source6_addr{};
-
+        // Get first AF_INET or AF_INET6 addr.
         addrinfo* next = addr;
         for(; next != nullptr; next = next->ai_next)
         {
             if(next->ai_family == AF_INET)
             {
-                source_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
+                new_route->source_ip_family = AF_INET;
+                const struct in_addr& source_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
+                inet_ntop(AF_INET, &source_addr, new_route->source_ip, INET_ADDRSTRLEN); 
                 break;
             }
             else if(addr->ai_family == AF_INET6)
             {
-//                printf("AF_INET6 ...TODO\n");
-//                source6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
+                new_route->source_ip_family = AF_INET6;
+                const struct in6_addr& source6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
+                inet_ntop(AF_INET6, &source6_addr, new_route->source_ip, INET6_ADDRSTRLEN); 
+                break;
             }
         }
         freeaddrinfo(addr);
@@ -308,6 +329,7 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
         if(!next)
         {
             printf("%s: No IPv4 addresses available for '%s'\n", __func__, source_host);
+            delete new_route;
             result = false;
             break;
         }
@@ -320,26 +342,29 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
         if(status != 0)
         {
             printf("%s: getaddrinfo(%s) error: %s\n", __func__, target_host, gai_strerror(status));
+            delete new_route;
             result = false;
             break;
         }
 
-        // Get first AF_INET addr.
-        struct in_addr target_addr{};
-//        struct in6_addr target6_addr{}; // TODO
-
+        // Get first AF_INET or AF_INET6 addr.
         next = addr;
         for(; next != nullptr; next = next->ai_next)
         {
             if(next->ai_family == AF_INET)
             {
-                target_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
+                new_route->target_ip_family = AF_INET;
+                const struct in_addr& target_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
+                inet_ntop(AF_INET, &target_addr, new_route->target_ip, INET_ADDRSTRLEN);
                 break;
+
             }
             else if(addr->ai_family == AF_INET6)
             {
-//                printf("AF_INET6 ...TODO\n");
-//                target6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
+                new_route->target_ip_family = AF_INET6;
+                const struct in6_addr& target6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
+                inet_ntop(AF_INET6, &target6_addr, new_route->target_ip, INET6_ADDRSTRLEN);
+                break;
             }
         }
         freeaddrinfo(addr);
@@ -347,6 +372,7 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
         if(!next)
         {
             printf("%s: No IPv4 addresses available for '%s'\n", __func__, target_host);
+            delete new_route;
             result = false;
             break;
         }
@@ -354,18 +380,6 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
         //
         // Set new route
         //
-        Route* new_route = new (std::nothrow) Route;
-        if(new_route == nullptr)
-        {
-            printf("%s: Out of memory: new_route is NULL\n", __func__);
-            result = false;
-            break;
-        }
-        
-        strncpy(new_route->source_ip, inet_ntoa(source_addr), MAX_ADDR_NAME);
-        strncpy(new_route->target_ip, inet_ntoa(target_addr), MAX_ADDR_NAME);
-        new_route->target_port = target_port;
-    
         if(route == nullptr)
         {
             route = new_route;
@@ -613,9 +627,9 @@ bool CTcpProxy::Listen()
     // Enter events loop...
     while(keep_running)
     {
-		//printf("%s: CallbackSelect() ...\n", __func__);
+        //printf("%s: CallbackSelect() ...\n", __func__);
         CallbackSelect();
-		//printf("%s: CallbackSelect() end\n", __func__);
+        //printf("%s: CallbackSelect() end\n", __func__);
     }
     
     return true;
@@ -716,11 +730,11 @@ void CTcpProxy::OnWrite(int fd)
 // Called by the event loop when ready to read/accept connected socket
 void CTcpProxy::OnConnect(int fd)
 {
-    socklen_t addr_len = sizeof(struct sockaddr_in); // in/out parameter
-    struct sockaddr_in source_addr;
-    memset(&source_addr, 0, sizeof(struct sockaddr_in));
+    socklen_t addr_len = sizeof(struct sockaddr); // in/out parameter
+    struct sockaddr source_addr;
+    memset(&source_addr, 0, sizeof(struct sockaddr));
     
-    int source_fd = accept(fd, (struct sockaddr*)&source_addr, &addr_len);
+    int source_fd = accept(fd, &source_addr, &addr_len);
     if(source_fd < 0)
     {
         if(errno != EAGAIN && errno != EINTR) // nonblocking, retry
@@ -744,8 +758,27 @@ void CTcpProxy::OnConnect(int fd)
         return;
     }
     
-    char source_ip[MAX_ADDR_NAME+1]{};
-    strncpy(source_ip, inet_ntoa(source_addr.sin_addr), MAX_ADDR_NAME);
+    char source_ip[INET6_ADDRSTRLEN]{};
+    in_port_t source_port{0};
+
+    if(source_addr.sa_family == AF_INET)
+    { 
+        const sockaddr_in& addr = (sockaddr_in&)source_addr;
+        source_port = addr.sin_port;
+        inet_ntop(AF_INET, &addr.sin_addr, source_ip, INET_ADDRSTRLEN);
+    }
+    else if(source_addr.sa_family == AF_INET6)
+    {
+        const sockaddr_in6& addr6 = (sockaddr_in6&)source_addr;
+        source_port = addr6.sin6_port;
+        inet_ntop(AF_INET6, &addr6.sin6_addr, source_ip, INET6_ADDRSTRLEN);
+    }
+    else
+    {
+        printf("%s fd=%d: Unsupported socket address family\n", __func__, fd);
+        CloseSock(source_fd);
+        return;
+    }
     
     // Lookup server name and establish control connection
     Route* rt = GetRoute(source_ip);
@@ -796,7 +829,7 @@ void CTcpProxy::OnConnect(int fd)
     }
     
     printf("%s fd=%d: Connection proxied: %s:%d (fd=%d) --> %s:%hu (fd=%d)\n", __func__, fd,
-           source_ip, ntohs(source_addr.sin_port), source_fd,
+           source_ip, ntohs(source_port), source_fd, 
            rt->target_ip, rt->target_port, target_fd);
     
     // Add client/server callbacks
@@ -828,6 +861,10 @@ void CTcpProxy::OnCommand(int fd)
         printf("%s fd=%d: cmd=\"%s\"\n", __func__, fd, cmd);
         
         ProcessCmd(cmd);
+
+        // Close fifo & reopen since connection is closed
+        CloseSock(fd);
+        MakeFifo(base_name);
         
         // Reset cmd buffer
         memset(cb->buf, 0, sizeof(cb->buf));
@@ -852,9 +889,9 @@ void CTcpProxy::OnCommand(int fd)
     }
 }
 
-void CTcpProxy::CloseSock(int fd1, int fd2, int fd3)
+void CTcpProxy::CloseSock(int fd1, int fd2)
 {
-    for(int fd : {fd1, fd2, fd3})
+    for(int fd : {fd1, fd2})
     {
         if(fd >= 0)
         {

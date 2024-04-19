@@ -6,11 +6,10 @@
 
 #include <sys/socket.h>     // fd_set
 #include <new>              // std::nothrow
-#include <string.h>         // strcpy
-
+#include <arpa/inet.h>      // INET6_ADDRSTRLEN
+#include <limits.h>         // NAME_MAX
 
 #define FD_MAX              256     // Highest file descriptor number expected
-#define MAX_ADDR_NAME       32      // Max IP length in numbers-and-dots notation
 #define MAX_HOST_NAME       256     // Max hostname length
 #define RW_BUFSIZE          512     // READ/WRITE buffer size
 
@@ -41,9 +40,11 @@ class CTcpProxy
     
     struct Route
     {
-        int source_fd = -1;
-        char source_ip[MAX_ADDR_NAME+1]{};
-        char target_ip[MAX_ADDR_NAME+1]{};
+        int source_fd{-1};
+        int source_ip_family{0};
+        char source_ip[INET6_ADDRSTRLEN]{};
+        int target_ip_family{0};
+        char target_ip[INET6_ADDRSTRLEN]{};
         unsigned short target_port = 0;
         Route* next = nullptr;
     };
@@ -56,11 +57,12 @@ public:
     bool Listen();
     
 private:
-    Callback cb[FD_MAX+1]{};    // Array of callbacks (for every fd)
-    fd_set rfds;                // Set of fds to be checked for readability
-    fd_set wfds;                // Set of fds to be checked for writability
-    unsigned short port = 0;    // Port to listen
-    Route* route = nullptr;     // List of routes
+    char base_name[NAME_MAX+1]{}; // Base name of the program
+    Callback cb[FD_MAX+1]{};      // Array of callbacks (for every fd)
+    fd_set rfds;                  // Set of fds to be checked for readability
+    fd_set wfds;                  // Set of fds to be checked for writability
+    unsigned short port = 0;      // Port to listen
+    Route* route = nullptr;       // List of routes
     bool keep_running = true;
     
     void CallbackAdd(int fd, int peer_fd, CALLBACK_FUNC read_fn, CALLBACK_FUNC write_fn);
@@ -81,7 +83,7 @@ private:
     bool MakeFifo(const char* fifo_base_name);
     bool MakeAsync(int fd);
     void ProcessCmd(const char* cmd);
-    void CloseSock(int fd1, int fd2=-1, int fd3=-1);
+    void CloseSock(int fd1, int fd2=-1);
     Route* GetRoute(const char* source_ip);
     Route* GetRoute(int source_fd);
     
