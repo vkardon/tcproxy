@@ -8,7 +8,7 @@ OBJ_DIR = $(PROJECT_HOME)/_obj
 
 SRCS = $(PROJECT_HOME)/main.cpp \
        $(PROJECT_HOME)/config.cpp \
-       $(PROJECT_HOME)/tcpProxy.cpp
+       $(PROJECT_HOME)/tcproxy.cpp
 
 # Include directories
 INCS = -I$(PROJECT_HOME)

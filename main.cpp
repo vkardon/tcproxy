@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <sys/time.h>   // gettimeofday
 #include <time.h>       // localtime
-#include "tcpProxy.h"
+#include "tcproxy.h"
 
 void SetStdOut()
 {
@@ -52,7 +52,7 @@ void SetStdOut()
     //setbuf(stdout, NULL);
     //setbuf(stderr, NULL);
     
-    // Set stdout and stoerr to "line buffered": On output, data is written when
+    // Set stdout and stderr to "line buffered": On output, data is written when
     // a newline character is inserted into the stream or when the buffer is full
     // (or flushed), whatever happens first.
     setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
@@ -61,6 +61,13 @@ void SetStdOut()
 
 int main(int argc, char** argv)
 {
+    // Make sure we have a config file
+    if(argc < 2)
+    {
+        printf("%s: No configuration file specified.\n", __func__);
+        return 1;
+    }
+    
     // Set stdout and stoerr to "line buffered": On output, data is written when
     // a newline character is inserted into the stream or when the buffer is full
     // (or flushed), whatever happens first.
@@ -73,13 +80,6 @@ int main(int argc, char** argv)
     strftime(time_str, sizeof(time_str), "%Y.%m.%d %H:%M:%S", localtime(&tv.tv_sec));
     
     printf("------- Starting TCP proxy at %s ------- \n", time_str);
-    
-    // Make sure we have a config file
-    if(argc < 2)
-    {
-        printf("%s: No configuration file specified.\n", __func__);
-        return 1;
-    }
     
     // Start listening
     CTcpProxy proxy(argv[0] /*path*/, argv[1] /*config file*/);

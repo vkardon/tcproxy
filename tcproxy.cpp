@@ -14,10 +14,9 @@
 #include <fcntl.h>          // O_NONBLOCK and other O_* constants
 #include <ctype.h>          // isspace
 #include <libgen.h>         // basename
-//#include <limits.h>         // USHRT_MAX, etc.
 #include <signal.h>
 #include "config.h"
-#include "tcpProxy.h"
+#include "tcproxy.h"
 
 
 const int MAX_LISTEN_BACKLOG = 5;
@@ -508,8 +507,8 @@ bool CTcpProxy::ReadConfig(const char* configFile)
         return false;
     }
     
-    char source_host[MAX_HOST_NAME+1]{};
-    char target_host[MAX_HOST_NAME+1]{};
+    char source_host[HOST_NAME_MAX+1]{};
+    char target_host[HOST_NAME_MAX+1]{};
     unsigned short target_port = 0;
     
     // Compose format string to scan up to max len for host name/ip
@@ -920,13 +919,13 @@ void CTcpProxy::ProcessCmd(const char* cmd)
         
         const char* ptr = cmd + strlen(CMD_ADD);
         
-        char source_host[MAX_HOST_NAME+1]{};
-        char target_host[MAX_HOST_NAME+1]{};
+        char source_host[HOST_NAME_MAX+1]{};
+        char target_host[HOST_NAME_MAX+1]{};
         unsigned short target_port = 0;
         
-        // Compose format string to scan up to MAX_HOST_NAME for host name/ip
+        // Compose format string to scan up to HOST_NAME_MAX for host name/ip
         char format[32]{};
-        sprintf(format, "%%%ds %%%ds %%hu", MAX_HOST_NAME, MAX_HOST_NAME);
+        sprintf(format, "%%%ds %%%ds %%hu", HOST_NAME_MAX, HOST_NAME_MAX);
 
         if(sscanf(ptr, format, source_host, target_host, &target_port) != 3)
         {
@@ -980,7 +979,7 @@ char* CTcpProxy::TrimString(char* str) const
     return str;
 }
 
-bool CTcpProxy::IsProcessRunning(const char* process_name)
+bool CTcpProxy::IsProcessRunning(const char* process_name) const
 {
     if(process_name == nullptr || process_name[0] == '\0')
         return false;
