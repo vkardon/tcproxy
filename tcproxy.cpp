@@ -260,130 +260,121 @@ bool CTcpProxy::MakeAsync(int fd)
 
 bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsigned short target_port)
 {
-    bool result = false;
-
-    while(true)
+    if(source_host == nullptr || *source_host == '\0' ||
+       target_host == nullptr || *target_host == '\0' || 
+       target_port == 0)
     {
-        if(source_host == nullptr || target_host == nullptr || target_port == 0)
+        printf("%s: Error: invalid arguments\n", __func__);
+        return false;
+    }
+
+    //
+    // Get the target host addr
+    //
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;        // Allow IPv4 or IPv6
+    hints.ai_socktype = SOCK_STREAM;    // TCP (connection-based protocol)
+    hints.ai_flags = 0;
+    hints.ai_protocol = 0;              // Any protocol
+
+    addrinfo* addr = nullptr;
+    int status = getaddrinfo(target_host, nullptr, &hints, &addr);
+    if(status != 0)
+    {
+        printf("%s: getaddrinfo(%s) error: %s\n", __func__, target_host, gai_strerror(status));
+        return false;
+    }
+
+    int target_ip_family{0};
+    char target_ip[INET6_ADDRSTRLEN]{};
+
+    // Note: getaddrinfo() returns a list of address structures
+    // Get first AF_INET or AF_INET6 addr.
+    addrinfo* next = addr;
+    for(; next != nullptr; next = next->ai_next)
+    {
+        if(next->ai_family == AF_INET)
         {
-            printf("%s: Error: invalid arguments\n", __func__);
-            result = false;
+            target_ip_family = AF_INET;
+            const struct in_addr& target_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
+            inet_ntop(AF_INET, &target_addr, target_ip, INET_ADDRSTRLEN);
             break;
         }
-   
-        //
+        else if(addr->ai_family == AF_INET6)
+        {
+            target_ip_family = AF_INET6;
+            const struct in6_addr& target6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
+            inet_ntop(AF_INET6, &target6_addr, target_ip, INET6_ADDRSTRLEN);
+            break;
+        }
+    }
+    freeaddrinfo(addr);
+
+    if(!next)
+    {
+        printf("%s: No IPv4 nor IPv6 addresses available for '%s'\n", __func__, target_host);
+        return false;
+    }
+
+    //
+    // Get the source host addr
+    //
+    addr = nullptr;
+    status = getaddrinfo(source_host, nullptr, &hints, &addr);
+    if(status != 0)
+    {
+        printf("%s: getaddrinfo(%s) error: %s\n", __func__, source_host, gai_strerror(status));
+        return false;
+    }
+
+    // Note: getaddrinfo() returns a list of address structures
+    // Add new route for every AF_INET or AF_INET6 addr.
+    int newRouteCount = 0;
+    next = addr;
+    for(; next != nullptr; next = next->ai_next)
+    {
+        int source_ip_family{0};
+        char source_ip[INET6_ADDRSTRLEN]{};
+
+        if(next->ai_family == AF_INET)
+        {
+            source_ip_family = AF_INET;
+            const struct in_addr& source_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
+            inet_ntop(AF_INET, &source_addr, source_ip, INET_ADDRSTRLEN); 
+        }
+        else if(addr->ai_family == AF_INET6)
+        {
+            source_ip_family = AF_INET6;
+            const struct in6_addr& source6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
+            inet_ntop(AF_INET6, &source6_addr, source_ip, INET6_ADDRSTRLEN); 
+        }
+        else
+        {
+            continue;
+        }
+
         // Create new route
-        //
         Route* new_route = new (std::nothrow) Route;
         if(new_route == nullptr)
         {
             printf("%s: Out of memory: new_route is NULL\n", __func__);
-            result = false;
-            break;
+            freeaddrinfo(addr);
+            return false;
         }
+        newRouteCount++;
+
+        new_route->source_ip_family = source_ip_family;
+        strcpy(new_route->source_ip, source_ip);  
+        new_route->target_ip_family = target_ip_family;
+        strcpy(new_route->target_ip, target_ip);
         new_route->target_port = target_port;
 
-        //
-        // Get the source host addr
-        //
-        addrinfo hints;
-        memset(&hints, 0, sizeof(hints));
-        hints.ai_family = AF_UNSPEC;        // Allow IPv4 or IPv6
-        hints.ai_socktype = SOCK_STREAM;    // TCP (connection-based protocol)
-        hints.ai_flags = 0;
-        hints.ai_protocol = 0;              // Any protocol
-
-        // Note: getaddrinfo() returns a list of address structures
-        addrinfo* addr = nullptr;
-        int status = getaddrinfo(source_host, nullptr, &hints, &addr);
-        if(status != 0)
-        {
-            printf("%s: getaddrinfo(%s) error: %s\n", __func__, source_host, gai_strerror(status));
-            delete new_route;
-            result = false;
-            break;
-        }
-
-        // Get first AF_INET or AF_INET6 addr.
-        addrinfo* next = addr;
-        for(; next != nullptr; next = next->ai_next)
-        {
-            if(next->ai_family == AF_INET)
-            {
-                new_route->source_ip_family = AF_INET;
-                const struct in_addr& source_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
-                inet_ntop(AF_INET, &source_addr, new_route->source_ip, INET_ADDRSTRLEN); 
-                break;
-            }
-            else if(addr->ai_family == AF_INET6)
-            {
-                new_route->source_ip_family = AF_INET6;
-                const struct in6_addr& source6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
-                inet_ntop(AF_INET6, &source6_addr, new_route->source_ip, INET6_ADDRSTRLEN); 
-                break;
-            }
-        }
-        freeaddrinfo(addr);
-
-        if(!next)
-        {
-            printf("%s: No IPv4 addresses available for '%s'\n", __func__, source_host);
-            delete new_route;
-            result = false;
-            break;
-        }
-
-        //
-        // Get the target host addr
-        //
-        addr = nullptr;
-        status = getaddrinfo(target_host, nullptr, &hints, &addr);
-        if(status != 0)
-        {
-            printf("%s: getaddrinfo(%s) error: %s\n", __func__, target_host, gai_strerror(status));
-            delete new_route;
-            result = false;
-            break;
-        }
-
-        // Get first AF_INET or AF_INET6 addr.
-        next = addr;
-        for(; next != nullptr; next = next->ai_next)
-        {
-            if(next->ai_family == AF_INET)
-            {
-                new_route->target_ip_family = AF_INET;
-                const struct in_addr& target_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
-                inet_ntop(AF_INET, &target_addr, new_route->target_ip, INET_ADDRSTRLEN);
-                break;
-
-            }
-            else if(addr->ai_family == AF_INET6)
-            {
-                new_route->target_ip_family = AF_INET6;
-                const struct in6_addr& target6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
-                inet_ntop(AF_INET6, &target6_addr, new_route->target_ip, INET6_ADDRSTRLEN);
-                break;
-            }
-        }
-        freeaddrinfo(addr);
-
-        if(!next)
-        {
-            printf("%s: No IPv4 addresses available for '%s'\n", __func__, target_host);
-            delete new_route;
-            result = false;
-            break;
-        }
-
-        //
         // Set new route
-        //
         if(route == nullptr)
         {
             route = new_route;
-            result = true;
-            break;
+            continue;
         }
         
         Route* rt = GetRoute(new_route->source_ip);
@@ -391,8 +382,7 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
         {
             new_route->next = route;
             route = new_route;
-            result = true;
-            break;
+            continue;
         }
         
         // The route is duplicated. Is it already connected?
@@ -402,8 +392,7 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
             strcpy(rt->target_ip, new_route->target_ip);
             rt->target_port = new_route->target_port;
             delete new_route;
-            result = true;
-            break;
+            continue;
         }
         
         // The route is already connected.
@@ -414,10 +403,10 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
         Callback* cb = GetCallback(rt->source_fd);
         if(cb == nullptr)
         {
-            printf("%s fd=%d: arg is NULL\n", __func__, rt->source_fd);
+            printf("%s: fd=%d, callback is NULL\n", __func__, rt->source_fd);
             delete new_route;
-            result = false;
-            break;
+            newRouteCount--; // Since we can't proceed for this route
+            continue;
         }
         
         // Close both source and target sockets (and remove associated callbacks)
@@ -430,14 +419,20 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
         rt->target_port = new_route->target_port;
         rt->source_fd = -1;
         delete new_route;
-        result = true;
-        break;
     }
-    
-    printf("%s: %s to add new route: %s --> %s:%hu\n", __func__,
-            (result ? "Success" : "Error"), source_host, target_host, target_port);
-    
-    return result;
+    freeaddrinfo(addr);
+
+    if(newRouteCount == 0)
+    {
+        printf("%s: Error adding new route for '%s'\n", __func__, source_host);
+    }
+    else
+    {
+        printf("%s: %d new route(s) added: %s --> %s:%hu\n", __func__,
+               newRouteCount, source_host, target_host, target_port);
+    }
+
+    return (newRouteCount > 0);
 }
 
 CTcpProxy::Route* CTcpProxy::GetRoute(const char* source_ip)
@@ -621,7 +616,7 @@ bool CTcpProxy::Listen()
     CallbackAdd(sock, -1, &CTcpProxy::OnConnect, nullptr);
     
     // Success
-    printf("%s fd=%d: Listening on port %d for incomming connections....\n", __func__, sock, port);
+    printf("%s: fd=%d, listening on port %d for incomming connections....\n", __func__, sock, port);
     
     // Enter events loop...
     while(keep_running)
@@ -640,7 +635,7 @@ void CTcpProxy::OnRead(int fd)
     Callback* cb = GetCallback(fd);
     if(cb == nullptr)
     {
-        printf("%s fd=%d: cb is NULL\n", __func__, fd);
+        printf("%s: fd=%d, cb is NULL\n", __func__, fd);
         return;
     }
     
@@ -648,7 +643,7 @@ void CTcpProxy::OnRead(int fd)
     Callback* peer_cb = GetCallback(cb->peer_fd);
     if(peer_cb == nullptr)
     {
-        printf("%s fd=%d: peer_fd=%d: peer_cb=nullptr\n", __func__, fd, cb->peer_fd);
+        printf("%s: fd=%d, peer_fd=%d: peer_cb=nullptr\n", __func__, fd, cb->peer_fd);
         CloseSock(fd, cb->peer_fd); // Note: arg is no longer valid
         return;
     }
@@ -661,7 +656,7 @@ void CTcpProxy::OnRead(int fd)
     if(n == 0)
     {
         // The connection has been gracefully closed by the client
-        printf("%s fd=%d: The client closed the connection\n", __func__, fd);
+        printf("%s: fd=%d, the client closed the connection\n", __func__, fd);
         CloseSock(fd, cb->peer_fd); // Note: arg is no longer valid
     }
     else if(n < 0)
@@ -669,7 +664,7 @@ void CTcpProxy::OnRead(int fd)
         // Client communication error
         if(errno != EAGAIN && errno != EINTR)
         {
-            printf("%s fd=%d: read error: %s\n", __func__, fd, strerror(errno));
+            printf("%s: fd=%d, read error: %s\n", __func__, fd, strerror(errno));
             CloseSock(fd, cb->peer_fd); // Note: arg is no longer valid
         }
     }
@@ -686,7 +681,7 @@ void CTcpProxy::OnWrite(int fd)
     Callback* cb = GetCallback(fd);
     if(cb == nullptr)
     {
-        printf("%s fd=%d: cb is NULL\n", __func__, fd);
+        printf("%s: fd=%d, cb is NULL\n", __func__, fd);
         return;
     }
     
@@ -697,14 +692,14 @@ void CTcpProxy::OnWrite(int fd)
     
     if(n == 0)
     {
-        printf("%s fd=%d: write error EOF: %s\n", __func__, fd, strerror(errno));
+        printf("%s: fd=%d, write error EOF: %s\n", __func__, fd, strerror(errno));
         CloseSock(fd, cb->peer_fd); // Note: cb is no longer valid
     }
     else if(n < 0)
     {
         if(errno != EAGAIN && errno != EINTR)
         {
-            printf("%s fd=%d: write error: %s\n", __func__, fd, strerror(errno));
+            printf("%s: fd=%d, write error: %s\n", __func__, fd, strerror(errno));
             CloseSock(fd, cb->peer_fd); // Note: arg is no longer valid
         }
     }
@@ -737,14 +732,14 @@ void CTcpProxy::OnConnect(int fd)
     if(source_fd < 0)
     {
         if(errno != EAGAIN && errno != EINTR) // nonblocking, retry
-            printf("%s fd=%d: accept error: %s\n", __func__, fd, strerror(errno));
+            printf("%s: fd=%d, accept error: %s\n", __func__, fd, strerror(errno));
         CloseSock(fd);
         return;
     }
     
     if(source_fd > FD_MAX)
     {
-        printf("%s fd=%d: source_fd=%d exeedes the max file descriptor %d\n",
+        printf("%s: fd=%d, source_fd=%d exeedes the max file descriptor %d\n",
                 __func__, fd, source_fd, FD_MAX);
         CloseSock(source_fd);
         return;
@@ -752,7 +747,7 @@ void CTcpProxy::OnConnect(int fd)
     
     if(!MakeAsync(source_fd)) // this may very well be redundant
     {
-        printf("%s fd=%d: make_async(source_fd) failed\n", __func__, fd);
+        printf("%s: fd=%d, make_async(source_fd) failed\n", __func__, fd);
         CloseSock(source_fd);
         return;
     }
@@ -774,7 +769,7 @@ void CTcpProxy::OnConnect(int fd)
     }
     else
     {
-        printf("%s fd=%d: Unsupported socket address family\n", __func__, fd);
+        printf("%s: fd=%d, unsupported socket address family\n", __func__, fd);
         CloseSock(source_fd);
         return;
     }
@@ -783,7 +778,7 @@ void CTcpProxy::OnConnect(int fd)
     Route* rt = GetRoute(source_ip);
     if(rt == nullptr)
     {
-        printf("%s fd=%d: GetRoute failed for source_ip=%s\n", __func__, fd, source_ip);
+        printf("%s: fd=%d, GetRoute failed for source_ip=%s\n", __func__, fd, source_ip);
         CloseSock(source_fd);
         return;
     }
@@ -791,14 +786,14 @@ void CTcpProxy::OnConnect(int fd)
     int target_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if(target_fd < 0)
     {
-        printf("%s fd=%d: socket error: %s\n", __func__, fd, strerror(errno));
+        printf("%s: fd=%d, socket error: %s\n", __func__, fd, strerror(errno));
         CloseSock(source_fd);
         return;
     }
     
     if(target_fd > FD_MAX)
     {
-        printf("%s fd=%d: target_fd=%d exeedes the max file descriptor %d\n",
+        printf("%s: fd=%d, target_fd=%d exeedes the max file descriptor %d\n",
                 __func__, fd, target_fd, FD_MAX);
         CloseSock(source_fd, target_fd);
         return;
@@ -806,7 +801,7 @@ void CTcpProxy::OnConnect(int fd)
     
     if(!MakeAsync(target_fd))
     {
-        printf("%s fd=%d: make_async(target_fd) failed\n", __func__, fd);
+        printf("%s: fd=%d, make_async(target_fd) failed\n", __func__, fd);
         CloseSock(source_fd, target_fd);
         return;
     }
@@ -821,13 +816,13 @@ void CTcpProxy::OnConnect(int fd)
     {
         if(errno != EINPROGRESS) // nonblocking, connection stalled
         {
-            printf("%s fd=%d: connect error: %s\n", __func__, fd, strerror(errno));
+            printf("%s: fd=%d, connect error: %s\n", __func__, fd, strerror(errno));
             CloseSock(source_fd, target_fd);
             return;
         }
     }
     
-    printf("%s fd=%d: Connection proxied: %s:%d (fd=%d) --> %s:%hu (fd=%d)\n", __func__, fd,
+    printf("%s: fd=%d, connection proxied: %s:%d (fd=%d) --> %s:%hu (fd=%d)\n", __func__, fd,
            source_ip, ntohs(source_port), source_fd, 
            rt->target_ip, rt->target_port, target_fd);
     
@@ -844,7 +839,7 @@ void CTcpProxy::OnCommand(int fd)
     Callback* cb = GetCallback(fd);
     if(cb == nullptr)
     {
-        printf("%s fd=%d: cb is NULL\n", __func__, fd);
+        printf("%s: fd=%d, cb is NULL\n", __func__, fd);
         return;
     }
     
@@ -857,7 +852,7 @@ void CTcpProxy::OnCommand(int fd)
         
         // Process command
         char* cmd = TrimString((char*)cb->buf);
-        printf("%s fd=%d: cmd=\"%s\"\n", __func__, fd, cmd);
+        printf("%s: fd=%d, cmd=\"%s\"\n", __func__, fd, cmd);
         
         ProcessCmd(cmd);
 
@@ -874,7 +869,7 @@ void CTcpProxy::OnCommand(int fd)
         // Client communication error
         if(errno != EAGAIN && errno != EINTR)
         {
-            printf("%s fd=%d: read error: %s\n", __func__, fd, strerror(errno));
+            printf("%s: fd=%d, read error: %s\n", __func__, fd, strerror(errno));
             
             // Reset cmd buffer
             memset(cb->buf, 0, sizeof(cb->buf));
