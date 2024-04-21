@@ -6,11 +6,11 @@ This is a practical example of callback technique for basic socket select/read/w
 
 The following configuration example will redirect all traffic on port 8080 from localhost to localhost port 22:
 
-[tcp_proxy]
+[tcp_proxy]<br/>
 port = 8080
 
-[tcp_proxy\routes]
+[tcp_proxy\routes]<br/>
 route = localhost localhost 22
 
-Test with ssh client:
+Test with ssh client:<br/>
 ssh -p 8080 localhost
