@@ -1,5 +1,5 @@
 //
-//  tcpProxy.cpp
+//  tcproxy.cpp
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,7 +17,6 @@
 #include <signal.h>
 #include "config.h"
 #include "tcproxy.h"
-
 
 const int MAX_LISTEN_BACKLOG = 5;
 
@@ -369,6 +368,10 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
         new_route->target_ip_family = target_ip_family;
         strcpy(new_route->target_ip, target_ip);
         new_route->target_port = target_port;
+
+        printf("%s: Adding route %s (%s) --> %s:%hu (%s)\n", __func__,
+               source_host, new_route->source_ip,
+               target_host, target_port, new_route->target_ip);
 
         // Set new route
         if(route == nullptr)

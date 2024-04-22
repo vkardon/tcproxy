@@ -1,5 +1,5 @@
 //
-//  tcpProxy.h
+//  tcproxy.h
 //
 #ifndef __TCP_PROXY__
 #define __TCP_PROXY__
@@ -94,7 +94,6 @@ private:
     Route* route{nullptr};        // List of routes
     bool keep_running{true};
 };
-
 
 #endif // __TCP_PROXY__
 
