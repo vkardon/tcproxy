@@ -256,6 +256,35 @@ bool CTcpProxy::MakeAsync(int fd)
     return true;
 }
 
+bool CTcpProxy::AddRoute(const char* route_conf)
+{
+    if(route_conf == nullptr || *route_conf == '\0')
+    {
+        printf("%s: Error: invalid route format '%s'\n", __func__,
+            (route_conf ? route_conf : "null"));
+        return false;
+    }
+
+    // Route string expected format: "add 192.168.0.1 192.168.0.1:8080"
+    // printf("%s: cmd=\"%s\"\n", __func__, routeStr);
+
+    char source_host[HOST_NAME_MAX+1]{};
+    char target_host[HOST_NAME_MAX+1]{};
+    unsigned short target_port = 0;
+
+    // Compose format string to scan up to HOST_NAME_MAX for host name/ip
+    char format[32]{};
+    sprintf(format, "%%%ds %%%d[^:]:%%hu", HOST_NAME_MAX, HOST_NAME_MAX);
+
+    if(sscanf(route_conf, format, source_host, target_host, &target_port) != 3)
+    {
+        printf("%s: Invalid route configuration: \"%s\"\n", __func__, route_conf);
+        return false;
+    }
+
+    return AddRoute(TrimString(source_host), TrimString(target_host), target_port);
+}
+
 bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsigned short target_port)
 {
     if(source_host == nullptr || *source_host == '\0' ||
@@ -502,26 +531,9 @@ bool CTcpProxy::ReadConfig(const char* configFile)
         return false;
     }
     
-    char source_host[HOST_NAME_MAX+1]{};
-    char target_host[HOST_NAME_MAX+1]{};
-    unsigned short target_port = 0;
-    
-    // Compose format string to scan up to max len for host name/ip
-    char format[32]{};
-    sprintf(format, "%%%ds %%%ds %%hu", (int)sizeof(source_host), (int)sizeof(target_host));
-    
-    // Route enumeration callback
-    const char* func_name = __func__;
-    
     auto OnEnum = [&](const char* route)->bool
     {
-        if(sscanf(route, format, source_host, target_host, &target_port) != 3)
-        {
-            printf("%s: Invalid route \"%s\"\n", func_name, route);
-            return false;
-        }
-        
-        return AddRoute(source_host, target_host, target_port);
+        return AddRoute(route);
     };
     
     // Enum routes
@@ -909,26 +921,10 @@ void CTcpProxy::ProcessCmd(const char* cmd)
     }
     else if(strncasecmp(cmd, CMD_ADD, strlen(CMD_ADD)) == 0)
     {
-        // Command format is "add 192.168.0.1 192.168.0.1 8080";
+        // Expected command format is "add 192.168.0.1 192.168.0.1:8080";
         printf("%s: cmd=\"%s\"\n", __func__, cmd);
-        
-        const char* ptr = cmd + strlen(CMD_ADD);
-        
-        char source_host[HOST_NAME_MAX+1]{};
-        char target_host[HOST_NAME_MAX+1]{};
-        unsigned short target_port = 0;
-        
-        // Compose format string to scan up to HOST_NAME_MAX for host name/ip
-        char format[32]{};
-        sprintf(format, "%%%ds %%%ds %%hu", HOST_NAME_MAX, HOST_NAME_MAX);
-
-        if(sscanf(ptr, format, source_host, target_host, &target_port) != 3)
-        {
-            printf("%s: Invalid command \"%s\"\n", __func__, cmd);
-            return;
-        }
-        
-        AddRoute(source_host, target_host, target_port);
+        const char* route_conf = cmd + strlen(CMD_ADD);
+        AddRoute(route_conf);
     }
     else
     {

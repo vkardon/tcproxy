@@ -10,7 +10,7 @@ The following configuration example will redirect all traffic on port 8080 from 
 port = 8080
 
 [tcp_proxy\routes]<br/>
-route = localhost localhost 22
+route = localhost localhost:22
 
 Test with ssh client:<br/>
 ssh -p 8080 localhost

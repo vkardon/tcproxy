@@ -53,10 +53,12 @@ public:
     CTcpProxy(const char* program_name, const char* configFile);
     ~CTcpProxy();
     
-    bool AddRoute(const char* source_host, const char* target_host, unsigned short target_port);
-    bool Listen();
-    
+bool Listen();
+
 private:
+    bool AddRoute(const char* route_conf);
+    bool AddRoute(const char* source_host, const char* target_host, unsigned short target_port);
+    
     void CallbackAdd(int fd, int peer_fd, CALLBACK_FUNC read_fn, CALLBACK_FUNC write_fn);
     void CallbackRemove(int);
     void CallbackSelect();
