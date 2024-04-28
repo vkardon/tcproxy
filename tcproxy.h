@@ -10,15 +10,13 @@
 #include <limits.h>         // NAME_MAX
 
 #define RW_BUFSIZE          512     // READ/WRITE buffer size
-#define FD_MAX              256     // Highest file descriptor number expected
 
-// Note: The number of TCP connections can be no higher than FD_MAX.
-// File descriptors 0, 1, and 2 are already in use as stdin, stdout, and stderr.
-// Moreover, libc can make use of a few file descriptors for functions like gethostbyname.
-// As a result, the real number of TCP connection will be lower then FD_MAX
-//
-// TODO: Since select() that cannot monitor more than FD_SETSIZE file descriptors,
-// it would make sence to use FD_SETSIZE instead of FD_MAX.
+// Note: The number of TCP connections can be no higher than FD_SETSIZE
+// since select() can monitor only file descriptors numbers that are less
+// than FD_SETSIZE (1024). File descriptors 0, 1, and 2 are already in use
+// as stdin, stdout, and stderr. Moreover, libc can make use of a few file
+// descriptors for functions like gethostbyname. As a result, the real 
+// number of TCP connection will be lower then FD_SETSIZE.
 
 //
 // TCP proxy class
@@ -87,7 +85,7 @@ private:
 
     // Class data
     char base_name[NAME_MAX+1]{}; // Base name of the program
-    Callback cb[FD_MAX+1]{};      // Array of callbacks (for every fd)
+    Callback cb[FD_SETSIZE]{};    // Array of callbacks (for every fd)
     fd_set rfds;                  // Set of fds to be checked for readability
     fd_set wfds;                  // Set of fds to be checked for writability
     unsigned short port{0};       // Port to listen

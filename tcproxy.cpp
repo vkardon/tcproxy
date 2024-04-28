@@ -78,7 +78,7 @@ CTcpProxy::~CTcpProxy()
     }
     
     // Delete callbacks
-    for(int i = 0; i <= FD_MAX; i++)
+    for(int i = 0; i < FD_SETSIZE; i++)
     {
         if(FD_ISSET(i, &rfds) || FD_ISSET(i, &wfds))
         {
@@ -92,7 +92,7 @@ void CTcpProxy::CallbackAdd(int fd, int peer_fd, CALLBACK_FUNC read_fn, CALLBACK
 {
     printf("%s: fd=%d\n", __func__, fd);
     
-    assert(fd >= 0 && fd <= FD_MAX);
+    assert(fd >= 0 && fd < FD_SETSIZE);
     
     Callback& c = cb[fd];
     assert(c.read_fn == nullptr && c.write_fn == nullptr && c.peer_fd < 0 && c.len == 0);
@@ -115,7 +115,7 @@ void CTcpProxy::CallbackRemove(int fd)
 {
     printf("%s: fd=%d\n", __func__, fd);
     
-    assert(fd >= 0 && fd <= FD_MAX);
+    assert(fd >= 0 && fd < FD_SETSIZE);
     
     FD_CLR(fd, &rfds);
     FD_CLR(fd, &wfds);
@@ -129,7 +129,7 @@ void CTcpProxy::CallbackSelect()
     fd_set trfds = rfds;
     fd_set twfds = wfds;
 
-    int n = select(FD_MAX+1, &trfds, &twfds, nullptr, nullptr);
+    int n = select(FD_SETSIZE, &trfds, &twfds, nullptr, nullptr);
     if(n < 0)
     {
         printf("select error: %s\n", strerror(errno));
@@ -138,8 +138,8 @@ void CTcpProxy::CallbackSelect()
     
     // Call callbacks for all ready file descriptors
     // Note: Start from file descriptors 3 since 0, 1, and 2 are stdin, stdout, and stderr.
-    //for(int i = 0; n && i <= FD_MAX; i++)
-    for(int i = 3; n && i <= FD_MAX; i++)
+    //for(int i = 0; n && i < FD_SETSIZE; i++)
+    for(int i = 3; n && i < FD_SETSIZE; i++)
     {
         //printf("%s: entering FD_ISSEST...\n", __func__);
         
@@ -172,8 +172,8 @@ void CTcpProxy::CallbackSelect()
 
 inline CTcpProxy::Callback* CTcpProxy::GetCallback(int fd)
 {
-    assert(fd >= 0 && fd <= FD_MAX);
-    return (fd >= 0 && fd <= FD_MAX ? &cb[fd] : nullptr);
+    assert(fd >= 0 && fd < FD_SETSIZE);
+    return (fd >= 0 && fd < FD_SETSIZE ? &cb[fd] : nullptr);
 }
 
 bool CTcpProxy::MakeAsync(int fd)
@@ -182,13 +182,13 @@ bool CTcpProxy::MakeAsync(int fd)
     int n = fcntl(fd, F_GETFL);
     if(n < 0)
     {
-		printf("fcntl(F_GETFL) error: %s\n", strerror(errno));
+        printf("fcntl(F_GETFL) error: %s\n", strerror(errno));
         return false;
     }
     
     if(fcntl(fd, F_SETFL, n | O_NONBLOCK) < 0)
     {
-		printf("fcntl(O_NONBLOCK) error: %s\n", strerror(errno));
+        printf("fcntl(O_NONBLOCK) error: %s\n", strerror(errno));
         return false;
     }
     
@@ -217,7 +217,7 @@ bool CTcpProxy::MakeAsync(int fd)
     //#define SMALL_LIMITS // Enable stress-tests
     
 #ifdef SMALL_LIMITS
-#if defined(SO_RCVBUF) && defined(SO_SNDBUF)
+  #if defined(SO_RCVBUF) && defined(SO_SNDBUF)
     // Make sure this really is a stream socket(like TCP). Code using datagram
     // sockets will simply fail miserably if it can never transmit a packet
     // larger than 4 bytes.
@@ -248,11 +248,10 @@ bool CTcpProxy::MakeAsync(int fd)
         printf("setsockopt(SO_SNDBUF) error: %s\n", strerror(errno));
         return false;
     }
-    
-#else     // !SO_RCVBUF || !SO_SNDBUF
-#error "Need SO_RCVBUF/SO_SNDBUF for SMALL_LIMITS"
-#endif    // SO_RCVBUF && SO_SNDBUF
-#endif      // SMALL_LIMITS
+  #else  
+    #error "Need SO_RCVBUF/SO_SNDBUF for SMALL_LIMITS"
+  #endif  // SO_RCVBUF && SO_SNDBUF
+#endif  // SMALL_LIMITS
     
     return true;
 }
@@ -290,8 +289,7 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
 
     // Note: getaddrinfo() returns a list of address structures
     // Get first AF_INET or AF_INET6 addr.
-    addrinfo* next = addr;
-    for(; next != nullptr; next = next->ai_next)
+    for(const addrinfo* next = addr; next; next = next->ai_next)
     {
         if(next->ai_family == AF_INET)
         {
@@ -300,17 +298,17 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
             inet_ntop(AF_INET, &target_addr, target_ip, INET_ADDRSTRLEN);
             break;
         }
-        else if(addr->ai_family == AF_INET6)
+        else if(next->ai_family == AF_INET6)
         {
             target_ip_family = AF_INET6;
-            const struct in6_addr& target6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
+            const struct in6_addr& target6_addr = ((sockaddr_in6*)next->ai_addr)->sin6_addr;
             inet_ntop(AF_INET6, &target6_addr, target_ip, INET6_ADDRSTRLEN);
             break;
         }
     }
     freeaddrinfo(addr);
 
-    if(!next)
+    if(target_ip_family == 0)
     {
         printf("%s: No IPv4 nor IPv6 addresses available for '%s'\n", __func__, target_host);
         return false;
@@ -330,8 +328,7 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
     // Note: getaddrinfo() returns a list of address structures
     // Add new route for every AF_INET or AF_INET6 addr.
     int newRouteCount = 0;
-    next = addr;
-    for(; next != nullptr; next = next->ai_next)
+    for(const addrinfo* next = addr; next; next = next->ai_next)
     {
         int source_ip_family{0};
         char source_ip[INET6_ADDRSTRLEN]{};
@@ -342,10 +339,10 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
             const struct in_addr& source_addr = ((sockaddr_in*)next->ai_addr)->sin_addr;
             inet_ntop(AF_INET, &source_addr, source_ip, INET_ADDRSTRLEN); 
         }
-        else if(addr->ai_family == AF_INET6)
+        else if(next->ai_family == AF_INET6)
         {
             source_ip_family = AF_INET6;
-            const struct in6_addr& source6_addr = ((sockaddr_in6*)addr->ai_addr)->sin6_addr;
+            const struct in6_addr& source6_addr = ((sockaddr_in6*)next->ai_addr)->sin6_addr;
             inet_ntop(AF_INET6, &source6_addr, source_ip, INET6_ADDRSTRLEN); 
         }
         else
@@ -400,7 +397,7 @@ bool CTcpProxy::AddRoute(const char* source_host, const char* target_host, unsig
         
         // The route is already connected.
         printf("%s: Duplicated route for %s --> %s:%hu\n", __func__,
-                source_host, target_host, target_port);
+               source_host, target_host, target_port);
         
         // Get the route's target socket
         Callback* cb = GetCallback(rt->source_fd);
@@ -455,9 +452,9 @@ CTcpProxy::Route* CTcpProxy::GetRoute(const char* source_ip)
 
 CTcpProxy::Route* CTcpProxy::GetRoute(int source_fd)
 {
-    assert(source_fd >= 0 && source_fd <= FD_MAX);
+    assert(source_fd >= 0 && source_fd < FD_SETSIZE);
     
-    if(source_fd < 0 || source_fd > FD_MAX)
+    if(source_fd < 0 || source_fd >= FD_SETSIZE)
         return nullptr;
     
     Route* rt = route;
@@ -740,10 +737,10 @@ void CTcpProxy::OnConnect(int fd)
         return;
     }
     
-    if(source_fd > FD_MAX)
+    if(source_fd >= FD_SETSIZE)
     {
         printf("%s: fd=%d, source_fd=%d exeedes the max file descriptor %d\n",
-                __func__, fd, source_fd, FD_MAX);
+                __func__, fd, source_fd, FD_SETSIZE-1);
         CloseSock(source_fd);
         return;
     }
@@ -794,10 +791,10 @@ void CTcpProxy::OnConnect(int fd)
         return;
     }
     
-    if(target_fd > FD_MAX)
+    if(target_fd >= FD_SETSIZE)
     {
         printf("%s: fd=%d, target_fd=%d exeedes the max file descriptor %d\n",
-                __func__, fd, target_fd, FD_MAX);
+                __func__, fd, target_fd, FD_SETSIZE-1);
         CloseSock(source_fd, target_fd);
         return;
     }
@@ -893,7 +890,7 @@ void CTcpProxy::CloseSock(int fd1, int fd2)
         if(fd >= 0)
         {
             close(fd);
-            if(fd <= FD_MAX)
+            if(fd < FD_SETSIZE)
                 CallbackRemove(fd);
             
             // If fd represents a source host, then update routing table
@@ -962,7 +959,9 @@ char* CTcpProxy::TrimString(char* str) const
                 ptrLast = ptr;
         }
         else
+        {
             ptrLast = nullptr;
+        }
         ptr++;
     }
     
