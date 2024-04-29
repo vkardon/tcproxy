@@ -15,16 +15,12 @@
 #include <ctype.h>          // isspace
 #include <libgen.h>         // basename
 #include <signal.h>
-#include "config.h"
 #include "tcproxy.h"
 
-const int MAX_LISTEN_BACKLOG = 5;
+const int MAX_LISTEN_BACKLOG = 100;
 
-const char* CONFIG_KEY_PROXY  = "tcp_proxy";
-const char* CONFIG_KEY_ROUTES = "tcp_proxy\\routes";
-
-const char* CONFIG_NAME_PORT  = "port";
-const char* CONFIG_NAME_ROUTE = "route";
+const char* CONFIG_NAME_PORT  = "port:";
+const char* CONFIG_NAME_ROUTE = "route:";
 
 const char* CMD_EXIT = "exit";
 const char* CMD_ADD  = "add ";
@@ -260,8 +256,7 @@ bool CTcpProxy::AddRoute(const char* route_conf)
 {
     if(route_conf == nullptr || *route_conf == '\0')
     {
-        printf("%s: Error: invalid route format '%s'\n", __func__,
-            (route_conf ? route_conf : "null"));
+        printf("%s: Error: invalid (empty) route format string\n", __func__);
         return false;
     }
 
@@ -498,46 +493,57 @@ CTcpProxy::Route* CTcpProxy::GetRoute(int source_fd)
 
 bool CTcpProxy::ReadConfig(const char* configFile)
 {
-    //
-    // Read port
-    //
-    Config config(configFile, CONFIG_KEY_PROXY);
-    if(!config.IsValid())
+    if(configFile == nullptr || *configFile == '\0')
     {
-        printf("%s: Failed to read key=%s.\n", __func__, CONFIG_KEY_PROXY);
+        printf("%s: Error: invalid (empty) config file name\n", __func__);
         return false;
     }
-    
-    int tmp = 0;
-    if(!config.GetIntValue(CONFIG_NAME_PORT, tmp))
+
+    // Open config file
+    FILE* stream = fopen(configFile, "r");
+    if(!stream) 
     {
-        printf("%s: Failed to read key=%s, name=%s.\n", __func__, CONFIG_KEY_PROXY, CONFIG_NAME_PORT);
+        printf("%s: fopen(%s) error: %s\n", __func__, configFile, strerror(errno));
         return false;
     }
-    else if(tmp <= 0 || tmp > USHRT_MAX)
+
+    // Read config file
+    char* line{nullptr};
+    size_t len{0};
+    ssize_t nread{0};
+    bool res = true;
+
+    size_t port_len = strlen(CONFIG_NAME_PORT);
+    size_t route_len = strlen(CONFIG_NAME_ROUTE);
+
+    while((nread = getline(&line, &len, stream)) != -1) 
     {
-        printf("%s: Invalid port number specified \"%d\"\n", __func__, tmp);
-        return false;
+        char* ptr = TrimString(line);
+
+        if(port == 0 && strncasecmp(ptr, CONFIG_NAME_PORT, port_len) == 0)
+        {
+            // Got a port
+            if(sscanf(ptr + port_len, "%hu", &port) != 1)
+            {
+                printf("%s: Invalid port number specified: '%s'\n", __func__, ptr);
+                res = false;
+                break;
+            }
+        }
+        else if(strncasecmp(ptr, CONFIG_NAME_ROUTE, route_len) == 0)
+        {
+            // Got a route
+            if(!AddRoute(ptr + route_len))
+            {
+                res = false;
+                break;
+            }
+        }
     }
-    port = (unsigned short)tmp;
-    
-    //
-    // Read routes
-    //
-    config.Init(configFile, CONFIG_KEY_ROUTES);
-    if(!config.IsValid())
-    {
-        printf("%s: Failed to read key=%s.\n", __func__, CONFIG_KEY_ROUTES);
-        return false;
-    }
-    
-    auto OnEnum = [&](const char* route)->bool
-    {
-        return AddRoute(route);
-    };
-    
-    // Enum routes
-    return config.EnumValue(CONFIG_NAME_ROUTE, OnEnum);
+
+    free(line);
+    fclose(stream);
+    return res;
 }
 
 bool CTcpProxy::MakeFifo(const char* fifo_base_name)

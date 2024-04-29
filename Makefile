@@ -7,7 +7,6 @@ PROJECT_HOME = .
 OBJ_DIR = $(PROJECT_HOME)/_obj
 
 SRCS = $(PROJECT_HOME)/main.cpp \
-       $(PROJECT_HOME)/config.cpp \
        $(PROJECT_HOME)/tcproxy.cpp
 
 # Include directories
@@ -29,10 +28,10 @@ else
   CC = g++
 endif
 
-CFLAGS = -std=c++11 -Wall -pthread
-#CFLAGS = -std=c++11 -Wall -pthread -O3 -s -DNDEBUG
+#CFLAGS = -std=c++11 -Wall
+CFLAGS = -std=c++11 -Wall -O3 -s -DNDEBUG
 LD = $(CC)
-LDFLAGS = -pthread
+LDFLAGS =
 
 # Build executable
 $(EXE): $(OBJS)
