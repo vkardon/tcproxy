@@ -2,8 +2,6 @@
 // TCP Proxy
 //
 #include <stdio.h>
-#include <sys/time.h>   // gettimeofday
-#include <time.h>       // localtime
 #include "tcproxy.h"
 
 void SetStdOut()
@@ -72,14 +70,6 @@ int main(int argc, char** argv)
     // a newline character is inserted into the stream or when the buffer is full
     // (or flushed), whatever happens first.
     SetStdOut();
-    
-    // Timestamp and log the message
-    timeval tv;
-    gettimeofday(&tv,nullptr);
-    char time_str[40]{};
-    strftime(time_str, sizeof(time_str), "%Y.%m.%d %H:%M:%S", localtime(&tv.tv_sec));
-    
-    printf("------- Starting TCP proxy at %s ------- \n", time_str);
     
     // Start listening
     CTcpProxy proxy(argv[0] /*path*/, argv[1] /*config file*/);

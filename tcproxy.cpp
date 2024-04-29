@@ -15,6 +15,8 @@
 #include <ctype.h>          // isspace
 #include <libgen.h>         // basename
 #include <signal.h>
+#include <sys/time.h>       // gettimeofday
+#include <time.h>           // localtime
 #include "tcproxy.h"
 
 const int MAX_LISTEN_BACKLOG = 100;
@@ -60,6 +62,14 @@ CTcpProxy::CTcpProxy(const char* program_name, const char* configFile)
     
     // Success
     keep_running = true;
+
+    // Timestamp and log the message
+    timeval tv;
+    gettimeofday(&tv,nullptr);
+    char time_str[40]{};
+    strftime(time_str, sizeof(time_str), "%Y.%m.%d %H:%M:%S", localtime(&tv.tv_sec));
+    
+    printf("------- Starting TCP proxy on port %d at %s ------- \n", port, time_str);
 }
 
 CTcpProxy::~CTcpProxy()
@@ -634,7 +644,7 @@ bool CTcpProxy::Listen()
     CallbackAdd(sock, -1, &CTcpProxy::OnConnect, nullptr);
     
     // Success
-    printf("%s: fd=%d, listening on port %d for incomming connections....\n", __func__, sock, port);
+    printf("%s: fd=%d, listening for incomming connections....\n", __func__, sock);
     
     // Enter events loop...
     while(keep_running)
