@@ -92,6 +92,17 @@ CTcpProxy::~CTcpProxy()
             close(i);
         }
     }
+
+    // Remove command fifo & lock file
+    if(base_name[0] != '\0')
+    {
+        char fname[PATH_MAX]{};
+        sprintf(fname, "/tmp/%s.cmd", base_name);
+        unlink(fname);
+
+        sprintf(fname, "/tmp/%s.lock", base_name);
+        unlink(fname);
+    }
 }
 
 void CTcpProxy::CallbackAdd(int fd, int peer_fd, CALLBACK_FUNC read_fn, CALLBACK_FUNC write_fn)
@@ -558,7 +569,7 @@ bool CTcpProxy::ReadConfig(const char* configFile)
 
 bool CTcpProxy::MakeCmdPipe()
 {
-    if(base_name == nullptr || base_name[0] == '\0')
+    if(base_name[0] == '\0')
         return false;
 
     // Open fifo to listen on the commands sent to the process
@@ -650,14 +661,6 @@ bool CTcpProxy::Listen()
         CallbackSelect();
         //printf("%s: CallbackSelect() end\n", __func__);
     }
-
-    // Remove command fifo & lock file
-    char fname[PATH_MAX]{};
-    sprintf(fname, "/tmp/%s.cmd", base_name);
-    unlink(fname);
-
-    sprintf(fname, "/tmp/%s.lock", base_name);
-    unlink(fname);
     
     return true;
 }
@@ -997,7 +1000,7 @@ char* CTcpProxy::TrimString(char* str) const
 
 bool CTcpProxy::IsProcessRunning() const
 {
-    if(base_name == nullptr || base_name[0] == '\0')
+    if(base_name[0] == '\0')
         return false;
     
     char lock_file[PATH_MAX]{};
