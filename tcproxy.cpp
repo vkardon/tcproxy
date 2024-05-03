@@ -25,7 +25,7 @@ const char* CONFIG_NAME_PORT  = "port:";
 const char* CONFIG_NAME_ROUTE = "route:";
 
 const char* CMD_EXIT = "exit";
-const char* CMD_ADD  = "add ";
+const char* CMD_ROUTE  = "route:";
 
 CTcpProxy::CTcpProxy(const char* program_name, const char* configFile)
 {
@@ -49,7 +49,7 @@ CTcpProxy::CTcpProxy(const char* program_name, const char* configFile)
     strcpy(base_name, name);
     
     // Make sure that no other instances of TcpProxy are running
-    if(IsProcessRunning(base_name))
+    if(IsProcessRunning())
         return;
     
     // Read configuration (port, routes, etc.)
@@ -57,7 +57,7 @@ CTcpProxy::CTcpProxy(const char* program_name, const char* configFile)
         return;
     
     // Open fifo to listen on the commands sent to the process
-    if(!MakeFifo(base_name))
+    if(!MakeCmdPipe())
         return;
     
     // Success
@@ -556,11 +556,14 @@ bool CTcpProxy::ReadConfig(const char* configFile)
     return res;
 }
 
-bool CTcpProxy::MakeFifo(const char* fifo_base_name)
+bool CTcpProxy::MakeCmdPipe()
 {
+    if(base_name == nullptr || base_name[0] == '\0')
+        return false;
+
     // Open fifo to listen on the commands sent to the process
     char fifo_name[PATH_MAX]{};
-    sprintf(fifo_name, "/tmp/%s.fifo", fifo_base_name);
+    sprintf(fifo_name, "/tmp/%s.cmd", base_name);
     
     // Remove fifo if existed from previous run. It's OK if it doesn't exist
     unlink(fifo_name);
@@ -587,12 +590,6 @@ bool CTcpProxy::MakeFifo(const char* fifo_base_name)
 
 bool CTcpProxy::Listen()
 {
-    if(!keep_running)
-    {
-        printf("%s: keep_running=false, cannot continue\n", __func__);
-        return false;
-    }
-    
     // Open up the TCP socket the proxy listens on
     int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if(sock < 0)
@@ -653,6 +650,14 @@ bool CTcpProxy::Listen()
         CallbackSelect();
         //printf("%s: CallbackSelect() end\n", __func__);
     }
+
+    // Remove command fifo & lock file
+    char fname[PATH_MAX]{};
+    sprintf(fname, "/tmp/%s.cmd", base_name);
+    unlink(fname);
+
+    sprintf(fname, "/tmp/%s.lock", base_name);
+    unlink(fname);
     
     return true;
 }
@@ -883,10 +888,12 @@ void CTcpProxy::OnCommand(int fd)
         printf("%s: fd=%d, cmd=\"%s\"\n", __func__, fd, cmd);
         
         ProcessCmd(cmd);
+        if(!keep_running)
+            return;
 
         // Close fifo & reopen since connection is closed
         CloseSock(fd);
-        MakeFifo(base_name);
+        MakeCmdPipe();
         
         // Reset cmd buffer
         memset(cb->buf, 0, sizeof(cb->buf));
@@ -935,11 +942,11 @@ void CTcpProxy::ProcessCmd(const char* cmd)
     {
         keep_running = false;
     }
-    else if(strncasecmp(cmd, CMD_ADD, strlen(CMD_ADD)) == 0)
+    else if(strncasecmp(cmd, CMD_ROUTE, strlen(CMD_ROUTE)) == 0)
     {
-        // Expected command format is "add 192.168.0.1 192.168.0.1:8080";
+        // Expected command format is "route: 192.168.0.1 192.168.0.1:8080";
         printf("%s: cmd=\"%s\"\n", __func__, cmd);
-        const char* route_conf = cmd + strlen(CMD_ADD);
+        const char* route_conf = cmd + strlen(CMD_ROUTE);
         AddRoute(route_conf);
     }
     else
@@ -988,13 +995,13 @@ char* CTcpProxy::TrimString(char* str) const
     return str;
 }
 
-bool CTcpProxy::IsProcessRunning(const char* process_name) const
+bool CTcpProxy::IsProcessRunning() const
 {
-    if(process_name == nullptr || process_name[0] == '\0')
+    if(base_name == nullptr || base_name[0] == '\0')
         return false;
     
     char lock_file[PATH_MAX]{};
-    sprintf(lock_file, "/tmp/%s.lock", process_name);
+    sprintf(lock_file, "/tmp/%s.lock", base_name);
     
     int fd = open(lock_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if(fd == -1)
@@ -1018,7 +1025,7 @@ bool CTcpProxy::IsProcessRunning(const char* process_name) const
         // we failed to create a file lock, meaning it's already locked
         if(errno == EACCES || errno == EAGAIN)
         {
-            printf("%s: Another instance of %s is already running\n", __func__, process_name);
+            printf("%s: Another instance of %s is already running\n", __func__, base_name);
             return true;
         }
     }

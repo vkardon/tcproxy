@@ -74,7 +74,7 @@ private:
     
     // Helpers
     bool ReadConfig(const char* configFile);
-    bool MakeFifo(const char* fifo_base_name);
+    bool MakeCmdPipe();
     bool MakeAsync(int fd);
     void ProcessCmd(const char* cmd);
     void CloseSock(int fd1, int fd2=-1);
@@ -83,7 +83,7 @@ private:
     
     // Utils
     char* TrimString(char* str) const; // Trimming whitespace (both side)
-    bool IsProcessRunning(const char* process_name) const;
+    bool IsProcessRunning() const;
 
     // Class data
     char base_name[NAME_MAX+1]{}; // Base name of the program
