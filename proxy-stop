@@ -1,8 +1,16 @@
-#!/bin/ksh
+#!/bin/bash
 
 PROXY_PATH=./tcproxy
 PROXY_NAME=`basename $PROXY_PATH`
-killall $PROXY_NAME
+#killall $PROXY_NAME
+
+# The proxy listens on fifo file for incoming commands.
+# Compose FIFO name based on program name without extension
+COMMAND_FIFO=/tmp/${PROXY_NAME%.*}.cmd
+#echo $COMMAND_FIFO
+
+# Send "exit" command to proxy's command fifo
+echo "exit" >> $COMMAND_FIFO
 
 echo Done
 
