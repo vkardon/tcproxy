@@ -73,7 +73,7 @@ int main(int argc, char** argv)
     
     // Start listening
     CTcpProxy proxy(argv[0] /*path*/, argv[1] /*config file*/);
-    if(!proxy.Listen())
+    if(!proxy.Start())
         return 1;
     
     printf("%s: Done\n", __func__);

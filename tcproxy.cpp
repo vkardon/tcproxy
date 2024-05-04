@@ -27,15 +27,13 @@ const char* CONFIG_NAME_ROUTE = "route:";
 const char* CMD_EXIT = "exit";
 const char* CMD_ROUTE  = "route:";
 
-CTcpProxy::CTcpProxy(const char* program_name, const char* configFile)
+CTcpProxy::CTcpProxy(const char* program_name, const char* config_file)
 {
     // Set fdset to have zero bits for all file descriptors
     FD_ZERO(&rfds);
     FD_ZERO(&wfds);
     
-    keep_running = false; // Initially
-    
-    // Writing to an unconnected socket will cause a process to receivea SIGPIPE
+    // Writing to an unconnected socket will cause a process to receive a SIGPIPE
     // signal. We don't want to die if this happens, so we ignore SIGPIPE.
     signal(SIGPIPE, SIG_IGN);
     
@@ -47,29 +45,10 @@ CTcpProxy::CTcpProxy(const char* program_name, const char* configFile)
     if(tmp != nullptr)
         *tmp = '\0';
     strcpy(base_name, name);
-    
-    // Make sure that no other instances of TcpProxy are running
-    if(IsProcessRunning())
-        return;
-    
-    // Read configuration (port, routes, etc.)
-    if(!ReadConfig(configFile))
-        return;
-    
-    // Open fifo to listen on the commands sent to the process
-    if(!MakeCmdPipe())
-        return;
-    
-    // Success
-    keep_running = true;
 
-    // Timestamp and log the message
-    timeval tv;
-    gettimeofday(&tv,nullptr);
-    char time_str[40]{};
-    strftime(time_str, sizeof(time_str), "%Y.%m.%d %H:%M:%S", localtime(&tv.tv_sec));
-    
-    printf("------- Starting TCP proxy on port %d at %s ------- \n", port, time_str);
+    // Remember config file name
+    size_t len = sizeof(conf_name) - 1;
+    strncpy(conf_name, config_file, len);
 }
 
 CTcpProxy::~CTcpProxy()
@@ -91,17 +70,6 @@ CTcpProxy::~CTcpProxy()
             CallbackRemove(i);
             close(i);
         }
-    }
-
-    // If we were running, then remove command fifo & lock file
-    if(keep_running && base_name[0] != '\0')
-    {
-        char fname[PATH_MAX]{};
-        sprintf(fname, "/tmp/%s.cmd", base_name);
-        unlink(fname);
-
-        sprintf(fname, "/tmp/%s.lock", base_name);
-        unlink(fname);
     }
 }
 
@@ -599,6 +567,45 @@ bool CTcpProxy::MakeCmdPipe()
     return true;
 }
 
+bool CTcpProxy::Start()
+{
+    // Make sure we have a valid base name
+    if(base_name[0] == '\0')
+        return false;
+
+    // Make sure that no other instances of TcpProxy are running
+    if(IsProcessRunning())
+        return false;
+
+    // Print the startup message
+    timeval tv;
+    gettimeofday(&tv,nullptr);
+    char time_str[40]{};
+    strftime(time_str, sizeof(time_str), "%Y.%m.%d %H:%M:%S", localtime(&tv.tv_sec));
+    
+    printf("------- Starting TCP proxy on port %d at %s ------- \n", port, time_str);
+
+    // Read configuration (port, routes, etc.).
+    // Open fifo to listen on the commands sent to the process.
+    bool res = false;
+    if(ReadConfig(conf_name) && MakeCmdPipe())
+    {
+        // Start to listen
+        keep_running = true;
+        res = Listen();
+    }
+
+    // Remove command fifo & lock file
+    char fname[PATH_MAX]{};
+    sprintf(fname, "/tmp/%s.cmd", base_name);
+    unlink(fname);
+
+    sprintf(fname, "/tmp/%s.lock", base_name);
+    unlink(fname);
+
+    return res;
+}
+ 
 bool CTcpProxy::Listen()
 {
     if(!keep_running)

@@ -9,7 +9,7 @@
 #include <arpa/inet.h>      // INET6_ADDRSTRLEN
 #include <limits.h>         // NAME_MAX
 
-#define RW_BUFSIZE          512     // READ/WRITE buffer size
+#define RW_BUFSIZE  512     // The size of READ/WRITE buffer
 
 // Note: The number of TCP connections can be no higher than FD_SETSIZE
 // since select() can monitor only file descriptors numbers that are less
@@ -52,10 +52,11 @@ class CTcpProxy
 public:
     CTcpProxy(const char* program_name, const char* configFile);
     ~CTcpProxy();
-    
-bool Listen();
+
+    bool Start();
 
 private:
+    bool Listen();
     bool AddRoute(const char* route_conf);
     bool AddRoute(const char* source_host, const char* target_host, unsigned short target_port);
     
@@ -73,7 +74,7 @@ private:
     void OnCommand(int fd);
     
     // Helpers
-    bool ReadConfig(const char* configFile);
+    bool ReadConfig(const char* config_file);
     bool MakeCmdPipe();
     bool MakeAsync(int fd);
     void ProcessCmd(const char* cmd);
@@ -87,6 +88,7 @@ private:
 
     // Class data
     char base_name[NAME_MAX+1]{}; // Base name of the program
+    char conf_name[PATH_MAX+1]{}; // The name of the config file
     Callback cb[FD_SETSIZE]{};    // Array of callbacks (for every fd)
     fd_set rfds;                  // Set of fds to be checked for readability
     fd_set wfds;                  // Set of fds to be checked for writability
