@@ -92,7 +92,7 @@ private:
     fd_set wfds;                  // Set of fds to be checked for writability
     unsigned short port{0};       // Port to listen
     Route* route{nullptr};        // List of routes
-    bool keep_running{true};
+    bool keep_running{false};
 };
 
 #endif // __TCP_PROXY__

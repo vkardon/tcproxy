@@ -93,8 +93,8 @@ CTcpProxy::~CTcpProxy()
         }
     }
 
-    // Remove command fifo & lock file
-    if(base_name[0] != '\0')
+    // If we were running, then remove command fifo & lock file
+    if(keep_running && base_name[0] != '\0')
     {
         char fname[PATH_MAX]{};
         sprintf(fname, "/tmp/%s.cmd", base_name);
@@ -601,6 +601,12 @@ bool CTcpProxy::MakeCmdPipe()
 
 bool CTcpProxy::Listen()
 {
+    if(!keep_running)
+    {
+        // We failed somewhere during initializatin and should't be running
+        return false;
+    }
+
     // Open up the TCP socket the proxy listens on
     int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if(sock < 0)
@@ -661,7 +667,7 @@ bool CTcpProxy::Listen()
         CallbackSelect();
         //printf("%s: CallbackSelect() end\n", __func__);
     }
-    
+
     return true;
 }
 
