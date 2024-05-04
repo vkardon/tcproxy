@@ -63,12 +63,12 @@ CTcpProxy::~CTcpProxy()
     }
     
     // Delete callbacks
-    for(int i = 0; i < FD_SETSIZE; i++)
+    for(int fd = 0; fd < FD_SETSIZE; fd++)
     {
-        if(FD_ISSET(i, &rfds) || FD_ISSET(i, &wfds))
+        if(FD_ISSET(fd, &rfds) || FD_ISSET(fd, &wfds))
         {
-            CallbackRemove(i);
-            close(i);
+            CallbackRemove(fd);
+            close(fd);
         }
     }
 }
@@ -94,6 +94,12 @@ void CTcpProxy::CallbackAdd(int fd, int peer_fd, CALLBACK_FUNC read_fn, CALLBACK
     // Set fd to be checked for writability
     if(c.write_fn != nullptr)
         FD_SET(fd, &wfds);
+
+    // Update highest-numbered file descriptor in set
+    if(fd > fd_max)
+        fd_max = fd;
+    if(peer_fd > fd_max)
+        fd_max = peer_fd;
 }
 
 void CTcpProxy::CallbackRemove(int fd)
@@ -101,11 +107,25 @@ void CTcpProxy::CallbackRemove(int fd)
     printf("%s: fd=%d\n", __func__, fd);
     
     assert(fd >= 0 && fd < FD_SETSIZE);
+
+    Callback& c = cb[fd];
+    c.Reset();
     
     FD_CLR(fd, &rfds);
     FD_CLR(fd, &wfds);
-    
-    cb[fd].Reset();
+
+    // Update highest-numbered file descriptor in set
+    if(fd == fd_max)
+    {
+        // Find the previous highest-numbered file descriptor
+        while(--fd_max > 0)
+        {
+            if(FD_ISSET(fd_max, &rfds) || FD_ISSET(fd_max, &wfds))
+                break;
+        }
+
+        // printf("#### old fd_max=%d, new fd_max=%d\n", fd, fd_max);
+    }
 }
 
 void CTcpProxy::CallbackSelect()
@@ -114,7 +134,7 @@ void CTcpProxy::CallbackSelect()
     fd_set trfds = rfds;
     fd_set twfds = wfds;
 
-    int n = select(FD_SETSIZE, &trfds, &twfds, nullptr, nullptr);
+    int n = select(fd_max + 1, &trfds, &twfds, nullptr, nullptr);
     if(n < 0)
     {
         printf("select error: %s\n", strerror(errno));

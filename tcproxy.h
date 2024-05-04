@@ -92,6 +92,7 @@ private:
     Callback cb[FD_SETSIZE]{};    // Array of callbacks (for every fd)
     fd_set rfds;                  // Set of fds to be checked for readability
     fd_set wfds;                  // Set of fds to be checked for writability
+    int fd_max{-1};               // Highest-numbered file descriptor in set
     unsigned short port{0};       // Port to listen
     Route* route{nullptr};        // List of routes
     bool keep_running{false};
