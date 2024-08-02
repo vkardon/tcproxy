@@ -538,6 +538,13 @@ bool CTcpProxy::ReadConfig(const char* configFile)
                 res = false;
                 break;
             }
+
+            // Print the startup message
+            timeval tv;
+            gettimeofday(&tv,nullptr);
+            char time_str[40]{};
+            strftime(time_str, sizeof(time_str), "%Y.%m.%d %H:%M:%S", localtime(&tv.tv_sec));
+            printf("------- Starting TCP proxy on port %d at %s ------- \n", port, time_str);
         }
         else if(strncasecmp(ptr, CONFIG_NAME_ROUTE, route_len) == 0)
         {
@@ -596,14 +603,6 @@ bool CTcpProxy::Start()
     // Make sure that no other instances of TcpProxy are running
     if(IsProcessRunning())
         return false;
-
-    // Print the startup message
-    timeval tv;
-    gettimeofday(&tv,nullptr);
-    char time_str[40]{};
-    strftime(time_str, sizeof(time_str), "%Y.%m.%d %H:%M:%S", localtime(&tv.tv_sec));
-    
-    printf("------- Starting TCP proxy on port %d at %s ------- \n", port, time_str);
 
     // Read configuration (port, routes, etc.).
     // Open fifo to listen on the commands sent to the process.
