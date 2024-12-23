@@ -1,6 +1,7 @@
 
 # Executable to build
-EXE = tcproxy 
+EXE = tcproxy
+DEBUG = true
 
 # Sources
 PROJECT_HOME = .
@@ -28,10 +29,20 @@ else
   CC = g++
 endif
 
-#CFLAGS = -std=c++11 -Wall
-CFLAGS = -std=c++11 -Wall -O3 -s -DNDEBUG
 LD = $(CC)
-LDFLAGS =
+
+# Configure Debug or Release build
+CFLAGS = -std=gnu++17 -Wall -pthread
+LDFLAGS = -pthread
+
+ifeq "$(DEBUG)" "true"
+  # Debug build
+  CFLAGS += -g
+else
+  # Release build (-s to remove all symbol table and relocation info)
+  CFLAGS += -O3 -DNDEBUG
+  LDFLAGS += -s
+endif
 
 # Build executable
 $(EXE): $(OBJS)
